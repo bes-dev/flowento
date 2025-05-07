@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Канбан-доска</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/jquery-ui.min.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #f5f5f5);
+            color: var(--tg-theme-text-color, #222);
+            padding: 16px;
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .project-select {
+            flex: 1;
+            padding: 8px 12px;
+            background: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #fff);
+            border: none;
+            border-radius: 8px;
+            margin-right: 10px;
+            outline: none;
+        }
+
+        .project-select option {
+            background: var(--tg-theme-bg-color, #f5f5f5);
+            color: var(--tg-theme-text-color, #222);
+        }
+
+        .add-task-btn {
+            padding: 8px 12px;
+            background: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #fff);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .kanban-board {
+            display: flex;
+            overflow-x: auto;
+            gap: 16px;
+            padding-bottom: 16px;
+        }
+
+        .column {
+            flex: 0 0 280px;
+            background: var(--tg-theme-secondary-bg-color, #eee);
+            border-radius: 8px;
+            padding: 8px;
+        }
+
+        .column-header {
+            font-weight: bold;
+            padding: 8px;
+            background: var(--tg-theme-hint-color, #ddd);
+            border-radius: 6px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .task-list {
+            min-height: 100px;
+        }
+
+        .task-card {
+            background: var(--tg-theme-bg-color, #fff);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: move;
+            border-left: 4px solid var(--tg-theme-button-color, #2481cc);
+        }
+
+        .task-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .task-desc {
+            font-size: 0.9em;
+            color: var(--tg-theme-hint-color, #888);
+        }
+
+        .task-deadline {
+            font-size: 0.8em;
+            margin-top: 8px;
+            color: var(--tg-theme-link-color, #2481cc);
+        }
+
+        .task-deadline.overdue {
+            color: #e53935;
+        }
+
+        .ui-sortable-placeholder {
+            background: rgba(0,0,0,0.1);
+            border-radius: 6px;
+            visibility: visible !important;
+            height: 80px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--tg-theme-bg-color, #fff);
+            border-radius: 12px;
+            padding: 16px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .modal-header {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--tg-theme-hint-color, #ddd);
+            border-radius: 6px;
+            background: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #222);
+        }
+
+        .form-group textarea {
+            height: 80px;
+            resize: none;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .button-primary {
+            background: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #fff);
+        }
+
+        .button-secondary {
+            background: var(--tg-theme-secondary-bg-color, #eee);
+            color: var(--tg-theme-text-color, #222);
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(0,0,0,0.1);
+            border-left-color: var(--tg-theme-button-color, #2481cc);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Адаптивный дизайн */
+        @media (max-width: 600px) {
+            .kanban-board {
+                flex-direction: column;
+            }
+
+            .column {
+                flex: none;
+                width: 100%;
+                margin-bottom: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <select id="projectSelect" class="project-select">
+                <option value="" disabled selected>Выберите проект</option>
+                <!-- Проекты будут загружены через JavaScript -->
+            </select>
+            <button id="addTaskBtn" class="add-task-btn">+ Добавить задачу</button>
+        </div>
+
+        <div id="loadingScreen" class="loading">
+            <div class="spinner"></div>
+        </div>
+
+        <div id="kanbanBoard" class="kanban-board" style="display: none;">
+            <div class="column" data-status="Создана">
+                <div class="column-header">Создана</div>
+                <div class="task-list" id="list-created"></div>
+            </div>
+
+            <div class="column" data-status="В работе">
+                <div class="column-header">В работе</div>
+                <div class="task-list" id="list-in-progress"></div>
+            </div>
+
+            <div class="column" data-status="На проверке">
+                <div class="column-header">На проверке</div>
+                <div class="task-list" id="list-review"></div>
+            </div>
+
+            <div class="column" data-status="Завершена">
+                <div class="column-header">Завершена</div>
+                <div class="task-list" id="list-done"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для добавления/редактирования задачи -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Новая задача</div>
+            <form id="taskForm">
+                <input type="hidden" id="projectId" name="projectId">
+                <input type="hidden" id="taskId" name="taskId">
+
+                <div class="form-group">
+                    <label for="taskName">Название задачи</label>
+                    <input type="text" id="taskName" name="taskName" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="taskDescription">Описание</label>
+                    <textarea id="taskDescription" name="taskDescription"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="taskStatus">Статус</label>
+                    <select id="taskStatus" name="taskStatus">
+                        <option value="Создана">Создана</option>
+                        <option value="В работе">В работе</option>
+                        <option value="На проверке">На проверке</option>
+                        <option value="Завершена">Завершена</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="taskDeadline">Дедлайн (ДД.ММ.ГГГГ)</label>
+                    <input type="text" id="taskDeadline" name="taskDeadline" placeholder="ДД.ММ.ГГГГ">
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" id="cancelTaskBtn" class="button button-secondary">Отмена</button>
+                    <button type="submit" class="button button-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Инициализация Telegram WebApp
+        const tgApp = window.Telegram.WebApp;
+        tgApp.expand();
+
+        // Переменные для хранения данных
+        let currentUser = null;
+        let projects = [];
+        let currentProject = null;
+
+        // Инициализация при загрузке страницы
+        $(document).ready(function() {
+            // Получаем данные пользователя из Telegram
+            currentUser = tgApp.initDataUnsafe?.user?.id || 'user123'; // Для отладки используем фиктивный ID
+
+            // Загружаем проекты пользователя
+            loadProjects();
+
+            // Настраиваем интерактивность канбан-доски
+            setupKanbanInteraction();
+
+            // Обработчики событий для UI элементов
+            setupEventListeners();
+        });
+
+        // Загрузка проектов пользователя
+        function loadProjects() {
+            // В реальном приложении здесь будет AJAX запрос к серверу
+            // Для демо используем имитацию запроса
+            setTimeout(() => {
+                // Эмуляция ответа от сервера
+                projects = [
+                    { id: 1, name: "Веб-сайт компании", status: "В процессе" },
+                    { id: 2, name: "Мобильное приложение", status: "В процессе" },
+                    { id: 3, name: "Маркетинговая кампания", status: "В процессе" }
+                ];
+
+                // Заполняем выпадающий список проектов
+                const $select = $('#projectSelect');
+                $select.find('option:not(:first)').remove();
+
+                projects.forEach(project => {
+                    $select.append(`<option value="${project.id}">${project.name}</option>`);
+                });
+
+                // Если есть проекты, выбираем первый по умолчанию
+                if (projects.length > 0) {
+                    $select.val(projects[0].id);
+                    loadProjectTasks(projects[0].id);
+                } else {
+                    $('#loadingScreen').html('<p>У вас еще нет проектов</p>');
+                }
+            }, 1000);
+        }
+
+        // Загрузка задач проекта
+        function loadProjectTasks(projectId) {
+            $('#loadingScreen').show();
+            $('#kanbanBoard').hide();
+
+            // Находим выбранный проект
+            currentProject = projects.find(p => p.id == projectId);
+
+            if (!currentProject) {
+                $('#loadingScreen').html('<p>Проект не найден</p>');
+                return;
+            }
+
+            // В реальном приложении здесь будет AJAX запрос к серверу
+            // Для демо используем имитацию запроса
+            setTimeout(() => {
+                // Эмуляция ответа от сервера с задачами
+                const tasks = [
+                    {
+                        id: 1,
+                        name: "Дизайн главной страницы",
+                        description: "Разработать дизайн главной страницы сайта",
+                        status: "Завершена",
+                        deadline: "28.04.2025"
+                    },
+                    {
+                        id: 2,
+                        name: "Разработка API",
+                        description: "Создать REST API для мобильного приложения",
+                        status: "В работе",
+                        deadline: "15.05.2025"
+                    },
+                    {
+                        id: 3,
+                        name: "Интеграция платежей",
+                        description: "Подключить платежный шлюз",
+                        status: "Создана",
+                        deadline: "20.05.2025"
+                    },
+                    {
+                        id: 4,
+                        name: "Тестирование безопасности",
+                        description: "Провести тесты на безопасность",
+                        status: "На проверке",
+                        deadline: "01.06.2025"
+                    }
+                ];
+
+                // Очищаем все колонки
+                $('.task-list').empty();
+
+                // Распределяем задачи по колонкам
+                tasks.forEach(task => {
+                    const $taskElement = createTaskElement(task);
+                    let listId;
+
+                    switch(task.status) {
+                        case 'Создана':
+                            listId = 'list-created';
+                            break;
+                        case 'В работе':
+                            listId = 'list-in-progress';
+                            break;
+                        case 'На проверке':
+                            listId = 'list-review';
+                            break;
+                        case 'Завершена':
+                            listId = 'list-done';
+                            break;
+                        default:
+                            listId = 'list-created';
+                    }
+
+                    $(`#${listId}`).append($taskElement);
+                });
+
+                // Показываем канбан-доску
+                $('#loadingScreen').hide();
+                $('#kanbanBoard').show();
+
+                // Обновляем сортировку
+                $(".task-list").sortable("refresh");
+            }, 1000);
+        }
+
+        // Создание HTML элемента задачи
+        function createTaskElement(task) {
+            const deadlineClass = isTaskOverdue(task.deadline) ? 'overdue' : '';
+
+            return $(`
+                <div class="task-card" data-task-id="${task.id}">
+                    <div class="task-title">${task.name}</div>
+                    <div class="task-desc">${task.description}</div>
+                    <div class="task-deadline ${deadlineClass}">
+                        Дедлайн: ${task.deadline}
+                    </div>
+                </div>
+            `);
+        }
+
+        // Проверка, просрочена ли задача
+        function isTaskOverdue(deadline) {
+            if (!deadline) return false;
+
+            const parts = deadline.split('.');
+            if (parts.length !== 3) return false;
+
+            const deadlineDate = new Date(parts[2], parts[1] - 1, parts[0]);
+            const today = new Date();
+
+            // Сбрасываем время до 00:00:00
+            today.setHours(0, 0, 0, 0);
+
+            return deadlineDate < today;
+        }
+
+        // Настройка интерактивности канбан-доски
+        function setupKanbanInteraction() {
+            // Настраиваем сортировку для каждой колонки
+            $(".task-list").sortable({
+                connectWith: ".task-list",
+                placeholder: "ui-sortable-placeholder",
+                stop: function(event, ui) {
+                    // Получаем новый статус задачи на основе колонки
+                    const $column = $(ui.item).closest('.column');
+                    const newStatus = $column.data('status');
+                    const taskId = $(ui.item).data('task-id');
+
+                    // Обновляем статус задачи
+                    updateTaskStatus(taskId, newStatus);
+                }
+            }).disableSelection();
+
+            // Обработчик для открытия редактирования задачи
+            $(document).on('click', '.task-card', function(e) {
+                const taskId = $(this).data('task-id');
+                openEditTaskModal(taskId);
+            });
+        }
+
+        // Установка обработчиков событий
+        function setupEventListeners() {
+            // Обработчик изменения выбранного проекта
+            $('#projectSelect').on('change', function() {
+                const projectId = $(this).val();
+                if (projectId) {
+                    loadProjectTasks(projectId);
+                }
+            });
+
+            // Обработчик кнопки добавления задачи
+            $('#addTaskBtn').on('click', function() {
+                openAddTaskModal();
+            });
+
+            // Обработчик отмены в модальном окне
+            $('#cancelTaskBtn').on('click', function() {
+                $('#taskModal').hide();
+            });
+
+            // Обработчик отправки формы задачи
+            $('#taskForm').on('submit', function(e) {
+                e.preventDefault();
+                saveTask();
+            });
+        }
+
+        // Открытие модального окна для добавления задачи
+        function openAddTaskModal() {
+            if (!currentProject) {
+                alert('Пожалуйста, выберите проект');
+                return;
+            }
+
+            // Очищаем форму
+            $('#taskForm')[0].reset();
+            $('#taskId').val('');
+            $('#projectId').val(currentProject.id);
+            $('#taskStatus').val('Создана');
+
+            // Устанавливаем заголовок
+            $('.modal-header').text('Новая задача');
+
+            // Показываем модальное окно
+            $('#taskModal').css('display', 'flex');
+        }
+
+        // Открытие модального окна для редактирования задачи
+        function openEditTaskModal(taskId) {
+            // В реальном приложении здесь будет запрос к серверу для получения данных задачи
+            // Для демо используем имитацию данных
+
+            // Находим задачу по ID (в реальном приложении будет запрос)
+            let task;
+
+            // Эмуляция поиска задачи на клиенте
+            const $taskElement = $(`.task-card[data-task-id="${taskId}"]`);
+            if ($taskElement.length) {
+                task = {
+                    id: taskId,
+                    name: $taskElement.find('.task-title').text(),
+                    description: $taskElement.find('.task-desc').text(),
+                    status: $taskElement.closest('.column').data('status'),
+                    deadline: $taskElement.find('.task-deadline').text().replace('Дедлайн: ', '')
+                };
+            }
+
+            if (!task) {
+                alert('Задача не найдена');
+                return;
+            }
+
+            // Заполняем форму данными задачи
+            $('#taskId').val(task.id);
+            $('#projectId').val(currentProject.id);
+            $('#taskName').val(task.name);
+            $('#taskDescription').val(task.description);
+            $('#taskStatus').val(task.status);
+            $('#taskDeadline').val(task.deadline);
+
+            // Устанавливаем заголовок
+            $('.modal-header').text('Редактирование задачи');
+
+            // Показываем модальное окно
+            $('#taskModal').css('display', 'flex');
+        }
+
+        // Сохранение задачи
+        function saveTask() {
+            const taskData = {
+                id: $('#taskId').val() || null,
+                projectId: $('#projectId').val(),
+                name: $('#taskName').val(),
+                description: $('#taskDescription').val(),
+                status: $('#taskStatus').val(),
+                deadline: $('#taskDeadline').val()
+            };
+
+            // В реальном приложении здесь будет AJAX запрос к серверу
+            // Для демо просто имитируем успешное сохранение
+
+            // Закрываем модальное окно
+            $('#taskModal').hide();
+
+            // Перезагружаем задачи проекта (в реальном приложении можно оптимизировать)
+            loadProjectTasks(currentProject.id);
+
+            // Отправляем данные в Telegram бота
+            sendDataToBot(taskData);
+        }
+
+        // Обновление статуса задачи (при перетаскивании)
+        function updateTaskStatus(taskId, newStatus) {
+            // В реальном приложении здесь будет AJAX запрос к серверу
+            console.log(`Обновление статуса задачи ${taskId} на "${newStatus}"`);
+
+            // Отправляем данные в Telegram бота
+            sendDataToBot({
+                id: taskId,
+                projectId: currentProject.id,
+                status: newStatus,
+                action: 'statusUpdate'
+            });
+        }
+
+        // Отправка данных обратно боту Telegram
+        function sendDataToBot(data) {
+            // Используем Telegram WebApp API для отправки данных боту
+            tgApp.sendData(JSON.stringify(data));
+        }
+    </script>
+</body>
+</html>
